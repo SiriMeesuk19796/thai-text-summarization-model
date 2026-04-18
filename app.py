@@ -23,14 +23,19 @@ class Request(BaseModel):
     reference: str = None
 
 
-# ✅ summarize
-@app.post("/summarize")
-def summarize(req: Request):
+# ✅ helper: mode → length
+def get_length_by_mode(mode: str):
+    if mode == "teaser":
+        return 10, 30
+    elif mode == "short":
+        return 20, 60
+    else:
+        return 50, 120
 
-    if not req.text.strip():
-        return {"error": "text is empty"}
 
-    clean_text = WHITESPACE_HANDLER(req.text)
+# ✅ helper: generate summary (ใช้ร่วมกัน)
+def generate_summary(text: str, mode: str):
+    clean_text = WHITESPACE_HANDLER(text)
 
     inputs = tokenizer(
         clean_text,
@@ -40,15 +45,7 @@ def summarize(req: Request):
         padding="longest"
     ).to(device)
 
-    if req.mode == "teaser":
-        min_len = 10
-        max_len = 30
-    elif req.mode == "short":
-        min_len = 20
-        max_len = 60
-    else:
-        min_len = 50
-        max_len = 120
+    min_len, max_len = get_length_by_mode(mode)
 
     output_ids = model.generate(
         input_ids=inputs["input_ids"],
@@ -61,39 +58,30 @@ def summarize(req: Request):
         no_repeat_ngram_size=3
     )
 
-    summary = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+
+# ✅ summarize
+@app.post("/summarize")
+def summarize(req: Request):
+
+    if not req.text.strip():
+        return {"error": "text is empty"}
+
+    summary = generate_summary(req.text, req.mode)
 
     return {"summary": summary}
 
 
+# ✅ evaluate (แก้ให้ใช้ mode แล้ว)
 @app.post("/evaluate")
 def evaluate(req: Request):
 
     if not req.text.strip():
         return {"error": "text is empty"}
 
-    clean_text = WHITESPACE_HANDLER(req.text)
-
-    inputs = tokenizer(
-        clean_text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512,
-        padding="longest"
-    ).to(device)
-
-    output_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=120,
-        min_length=50,
-        num_beams=4,
-        length_penalty=2.0,
-        early_stopping=True,
-        no_repeat_ngram_size=3
-    )
-
-    summary = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    # 🔥 ใช้ mode แล้ว
+    summary = generate_summary(req.text, req.mode)
 
     if not req.reference:
         return {
@@ -101,6 +89,7 @@ def evaluate(req: Request):
             "bertscore": None
         }
 
+    # 🔥 BERTScore
     P, R, F1 = score(
         [summary],
         [req.reference],
