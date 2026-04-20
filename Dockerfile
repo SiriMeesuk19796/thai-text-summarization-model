@@ -6,10 +6,6 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
-RUN python -c "from transformers import AutoTokenizer, AutoModelForSeq2SeqLM; \
-model_name='thanathorn/mt5-cpe-kmutt-thai-sentence-sum'; \
-AutoTokenizer.from_pretrained(model_name); \
-AutoModelForSeq2SeqLM.from_pretrained(model_name)"
 
 COPY . .
 
