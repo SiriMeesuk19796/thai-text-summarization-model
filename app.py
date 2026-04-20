@@ -1,100 +1,51 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import re
-import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from bert_score import score
+from enum import Enum
+from services.mt5_service import summarize_mt5
+from services.gemini_service import summarize_gemini
 
 app = FastAPI()
 
-model_name = "thanathorn/mt5-cpe-kmutt-thai-sentence-sum"
-
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
-
-WHITESPACE_HANDLER = lambda x: re.sub(r'\s+', ' ', re.sub(r'\n+', ' ', x.strip()))
+class ModelName(str, Enum):
+    mt5 = "mt5"
+    gemini = "gemini"
 
 class Request(BaseModel):
     text: str
     mode: str = "normal"
     reference: str = None
+    model: ModelName
 
 
-# ✅ helper: mode → length
-def get_length_by_mode(mode: str):
-    if mode == "teaser":
-        return 10, 30
-    elif mode == "short":
-        return 20, 60
-    else:
-        return 50, 120
+@app.post("/summarize/mt5")
+def summarize_mt5_api(req: Request):
+    return {"summary": summarize_mt5(req.text, req.mode)}
 
 
-# ✅ helper: generate summary (ใช้ร่วมกัน)
-def generate_summary(text: str, mode: str):
-    clean_text = WHITESPACE_HANDLER(text)
-
-    inputs = tokenizer(
-        clean_text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512,
-        padding="longest"
-    ).to(device)
-
-    min_len, max_len = get_length_by_mode(mode)
-
-    output_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=max_len,
-        min_length=min_len,
-        num_beams=4,
-        length_penalty=2.0,
-        early_stopping=True,
-        no_repeat_ngram_size=3
-    )
-
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+@app.post("/summarize/gemini")
+def summarize_gemini_api(req: Request):
+    try:
+        summary = summarize_gemini(req.text, req.mode)
+        return {"summary": summary}
+    except Exception as e:
+        return {"error": str(e)}
 
 
-# ✅ summarize
-@app.post("/summarize")
-def summarize(req: Request):
-
-    if not req.text.strip():
-        return {"error": "text is empty"}
-
-    summary = generate_summary(req.text, req.mode)
-
-    return {"summary": summary}
-
-
-# ✅ evaluate (แก้ให้ใช้ mode แล้ว)
 @app.post("/evaluate")
 def evaluate(req: Request):
-
-    if not req.text.strip():
-        return {"error": "text is empty"}
-
-    # 🔥 ใช้ mode แล้ว
-    summary = generate_summary(req.text, req.mode)
+    
+    if req.model == "mt5":
+        summary = summarize_mt5(req.text, req.mode)
+    elif req.model == "gemini":
+        summary = summarize_gemini(req.text, req.mode)
+    else:
+        return {"error": "invalid model"}
 
     if not req.reference:
-        return {
-            "summary": summary,
-            "bertscore": None
-        }
+        return {"summary": summary, "bertscore": None}
 
-    # 🔥 BERTScore
-    P, R, F1 = score(
-        [summary],
-        [req.reference],
-        lang="th"
-    )
+    P, R, F1 = score([summary], [req.reference], lang="th")
 
     return {
         "summary": summary,
@@ -104,3 +55,26 @@ def evaluate(req: Request):
             "f1": float(F1[0])
         }
     }
+
+
+# 🔥 compare 2 model (โคตร useful)
+@app.post("/compare")
+def compare(req: Request):
+    mt5_sum = summarize_mt5(req.text, req.mode)
+    gemini_sum = summarize_gemini(req.text, req.mode)
+
+    result = {
+        "mt5": mt5_sum,
+        "gemini": gemini_sum
+    }
+
+    if req.reference:
+        P1, R1, F1 = score([mt5_sum], [req.reference], lang="th")
+        P2, R2, F2 = score([gemini_sum], [req.reference], lang="th")
+
+        result["score"] = {
+            "mt5": float(F1[0]),
+            "gemini": float(F2[0])
+        }
+
+    return result
