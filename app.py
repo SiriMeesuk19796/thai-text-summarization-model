@@ -14,7 +14,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=api_key)
 
-model = genai.GenerativeModel("models/gemini-2.5-flash")
+model = genai.GenerativeModel("models/gemini-flash-lite-latest")
 
 import google.generativeai as genai
 
@@ -36,14 +36,12 @@ def summarize(req: Request):
 
     return {"summary": summary}
 
-# ✅ evaluate (แก้ให้ใช้ mode แล้ว)
 @app.post("/evaluate")
 def evaluate(req: Request):
 
     if not req.text.strip():
         return {"error": "text is empty"}
 
-    # 🔥 ใช้ mode แล้ว
     summary = generate_summary(req.text, req.mode)
 
     if not req.reference:
@@ -52,7 +50,6 @@ def evaluate(req: Request):
             "bertscore": None
         }
 
-    # 🔥 BERTScore
     P, R, F1 = score(
         [summary],
         [req.reference],
@@ -96,7 +93,7 @@ def generate_summary(text: str, mode: str):
 
     generation_config={
         "max_output_tokens": 300,
-        "temperature": 0.5,  
+        "temperature": 0.3,  
         "top_p": 0.9
     }
 
