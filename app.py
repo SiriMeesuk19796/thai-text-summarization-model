@@ -14,7 +14,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=api_key)
 
-model = genai.GenerativeModel("models/gemini-2.5-flash")
+model = genai.GenerativeModel("models/gemini-flash-lite-latest")
 
 import google.generativeai as genai
 
@@ -96,7 +96,7 @@ def generate_summary(text: str, mode: str):
 
     generation_config={
         "max_output_tokens": 300,
-        "temperature": 0.5,  
+        "temperature": 0.3,  
         "top_p": 0.9
     }
 
