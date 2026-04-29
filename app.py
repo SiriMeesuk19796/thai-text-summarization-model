@@ -36,14 +36,12 @@ def summarize(req: Request):
 
     return {"summary": summary}
 
-# ✅ evaluate (แก้ให้ใช้ mode แล้ว)
 @app.post("/evaluate")
 def evaluate(req: Request):
 
     if not req.text.strip():
         return {"error": "text is empty"}
 
-    # 🔥 ใช้ mode แล้ว
     summary = generate_summary(req.text, req.mode)
 
     if not req.reference:
@@ -52,7 +50,6 @@ def evaluate(req: Request):
             "bertscore": None
         }
 
-    # 🔥 BERTScore
     P, R, F1 = score(
         [summary],
         [req.reference],
